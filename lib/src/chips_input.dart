@@ -64,11 +64,12 @@ class ChipsInput<T> extends StatefulWidget {
     this.textCapitalization = TextCapitalization.none,
     this.autofocus = false,
     this.allowChipEditing = false,
-    this.userFocusNode,
+    this.focusNode,
     this.initialSuggestions,
     this.suggestionsBoxElevation = 0,
     this.suggestionsBoxDecoration = const BoxDecoration(),
     this.showKeyboard = true,
+    this.elevationBorderRadius,
   })  : assert(maxChips == null || initialValue.length <= maxChips),
         super(key: key);
 
@@ -92,7 +93,7 @@ class ChipsInput<T> extends StatefulWidget {
   /// Function to produce a widget to show in the suggestions overlay.
   final ChipsBuilder<T> suggestionBuilder;
 
-  /// List of initial values, if any.
+  /// List of inital values, if any.
   final List<T> initialValue;
 
   /// Maximum number of chips to allow in the field.
@@ -115,7 +116,7 @@ class ChipsInput<T> extends StatefulWidget {
   /// Whether to hide the text being edited (e.g., for passwords).
   final bool obscureText;
 
-  /// Whether to enable auto-correction or not.
+  /// Whether to enable autocorrection.
   final bool autocorrect;
 
   /// What text to display in the text input control's action button.
@@ -144,7 +145,7 @@ class ChipsInput<T> extends StatefulWidget {
   final BoxDecoration suggestionsBoxDecoration;
 
   /// Defines the keyboard focus for this widget.
-  final FocusNode? userFocusNode;
+  final FocusNode? focusNode;
 
   /// Set of values to suggest when field first receives focus.
   final List<T>? initialSuggestions;
@@ -155,6 +156,10 @@ class ChipsInput<T> extends StatefulWidget {
   /// Configures how the platform keyboard will select an uppercase or lowercase
   /// keyboard.
   final TextCapitalization textCapitalization;
+
+  ///Border radius to match elevation shadow radius to BoxDecoraton radius
+  final BorderRadiusGeometry? elevationBorderRadius;
+
 
   @override
   ChipsInputState<T> createState() => ChipsInputState<T>();
@@ -192,9 +197,9 @@ class ChipsInputState<T> extends State<ChipsInput<T>> with TextInputClient {
   bool get _hasReachedMaxChips =>
       widget.maxChips != null && _chips.length >= widget.maxChips!;
 
-  FocusNode? _defaultFocusNode;
+  FocusNode? _focusNode;
   FocusNode get _effectiveFocusNode =>
-      widget.userFocusNode ?? (_defaultFocusNode ??= FocusNode());
+      widget.focusNode ?? (_focusNode ??= FocusNode());
   late FocusAttachment _nodeAttachment;
 
   RenderBox? get renderBox => context.findRenderObject() as RenderBox?;
@@ -225,14 +230,14 @@ class ChipsInputState<T> extends State<ChipsInput<T>> with TextInputClient {
   void dispose() {
     _closeInputConnectionIfNeeded();
     _effectiveFocusNode.removeListener(_handleFocusChanged);
-    _defaultFocusNode?.dispose();
+    _focusNode?.dispose();
     _suggestionsStreamController.close();
     _suggestionsBoxController.close();
     super.dispose();
   }
 
   void _handleFocusChanged() {
-    if (_effectiveFocusNode.hasFocus) {
+    if (_focusNode?.hasFocus ?? false) {
       if (widget.showKeyboard) {
         _openInputConnection();
       }
@@ -283,6 +288,7 @@ class ChipsInputState<T> extends State<ChipsInput<T>> with TextInputClient {
             if (snapshot.hasData && snapshot.data!.isNotEmpty) {
               final suggestionsListView = Material(
                 elevation: widget.suggestionsBoxElevation,
+                borderRadius: widget.elevationBorderRadius,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     maxHeight: suggestionBoxHeight,
@@ -331,7 +337,7 @@ class ChipsInputState<T> extends State<ChipsInput<T>> with TextInputClient {
   /// Add the provided value to the list of values in the widget.
   void selectSuggestion(T data) {
     if (!_hasReachedMaxChips) {
-      setState(() => _chips.add(data));
+      setState(() => _chips = _chips..add(data));
       if (widget.allowChipEditing) {
         final enteredText = _value.normalCharactersText;
         if (enteredText.isNotEmpty) _enteredTexts[data] = enteredText;
@@ -346,7 +352,7 @@ class ChipsInputState<T> extends State<ChipsInput<T>> with TextInputClient {
     }
     widget.onChanged(_chips.toList(growable: false));
     if (!widget.showKeyboard) {
-      _effectiveFocusNode.unfocus();
+      _focusNode?.unfocus();
     }
   }
 
@@ -454,12 +460,7 @@ class ChipsInputState<T> extends State<ChipsInput<T>> with TextInputClient {
     if (_textInputConnection?.attached ?? false) {
       _textInputConnection?.setEditingState(_value);
     }
-    //
-    // Showing the text input will display the on-screen keyboard even if the
-    // widget does not have focus. However, not showing the input means the
-    // keyboard input on iOS will close the keyboard on each key press.
-    //
-    // _textInputConnection?.show();
+    _textInputConnection?.show();
   }
 
   @override
@@ -549,7 +550,7 @@ class ChipsInputState<T> extends State<ChipsInput<T>> with TextInputClient {
     );
 
     return RawKeyboardListener(
-      focusNode: _effectiveFocusNode,
+      focusNode: _focusNode ?? FocusNode(),
       onKey: (event) {
         final str = currentTextEditingValue.text;
         // seems like the browser handles backspace already, so doing the same
